@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Grow a Garden 3D: Mutations</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;600;800&display=swap" rel="stylesheet">
+
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            font-family: 'Prompt', sans-serif; 
+            background-color: #87CEEB; 
+            touch-action: none;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 10px;
+            box-sizing: border-box;
+            z-index: 10;
+        }
+
+        .top-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            pointer-events: none;
+        }
+
+        .stats-box {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 8px 15px;
+            border-radius: 15px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            font-weight: 800;
+            color: #333;
+            pointer-events: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 100px;
+        }
+        .money-text { color: #27ae60; font-size: 1.2rem; }
+        .sub-text { font-size: 0.75rem; color: #666; }
+
+        .actions-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            pointer-events: auto;
+            align-items: flex-end;
+        }
+
+        .btn-action {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 12px;
+            font-weight: 800;
+            cursor: pointer;
+            font-family: 'Prompt', sans-serif;
+            color: white;
+            box-shadow: 0 4px 0 rgba(0,0,0,0.15);
+            transition: transform 0.1s;
+            text-align: right;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            min-width: 140px;
+        }
+        .btn-action:active { transform: translateY(4px); box-shadow: none; }
+        .btn-sell { background: #e74c3c; }
+        .btn-shop { background: #f39c12; }
+        .btn-land { background: #3498db; }
+
+        .bottom-dock {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
+            border-radius: 20px 20px 0 0;
+            padding: 10px;
+            padding-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            pointer-events: auto;
+            width: 100%;
+            max-width: 600px;
+            align-self: center;
+        }
+
+        .inv-header {
+            color: white;
+            font-weight: bold;
+            font-size: 0.9rem;
+            margin-bottom: 8px;
+            text-shadow: 1px 1px 2px black;
+            display: flex; justify-content: space-between;
+        }
+
+        .inventory-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .inv-arrow {
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            user-select: none;
+            padding: 5px;
+        }
+
+        #inventory-bar {
+            display: flex;
+            gap: 10px;
+            overflow: hidden;
+            flex: 1;
+        }
+
+        .inventory-slot {
+            width: 45px;
+            height: 45px;
+            background: rgba(255,255,255,0.9);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.2rem;
+            cursor: pointer;
+            border: 3px solid transparent;
+            position: relative;
+            flex-shrink: 0;
+            transition: transform 0.2s;
+        }
+        .inventory-slot:active { transform: scale(0.9); }
+        .inventory-slot.selected { border-color: #f1c40f; background: #fffbe6; box-shadow: 0 0 10px #f1c40f; }
+        
+        .slot-count {
+            position: absolute;
+            bottom: 0; right: 0;
+            background: #e74c3c;
+            color: white;
+            font-size: 0.7rem;
+            width: 18px; height: 18px;
+            border-radius: 50%;
+            display: flex; justify-content: center; align-items: center;
+            font-weight: bold;
+            border: 2px solid white;
+        }
+
+        #shop-drawer {
+            position: absolute;
+            bottom: -150%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 95%;
+            max-width: 500px;
+            max-height: 80vh;
+            background: white;
+            border-radius: 20px 20px 0 0;
+            box-shadow: 0 -10px 40px rgba(0,0,0,0.3);
+            transition: bottom 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            z-index: 9999;
+            pointer-events: auto;
+        }
+        #shop-drawer.open { bottom: 0; }
+
+        .shop-header { display: flex; justify-content: space-between; margin-bottom: 15px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .shop-close { cursor: pointer; font-size: 1.5rem; color: #e74c3c; }
+        .shop-list { overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding-bottom: 20px; }
+        
+        .seed-card { border: 2px solid #eee; border-radius: 10px; padding: 10px; text-align: center; cursor: pointer; background: #fff; position: relative; }
+        .seed-card:active { background: #f0f0f0; }
+        .seed-card.out-of-stock { opacity: 0.5; cursor: not-allowed; }
+        .stock-badge { position: absolute; top: 5px; right: 5px; background: #333; color: white; font-size: 0.7rem; padding: 2px 6px; border-radius: 10px; }
+
+        #tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            pointer-events: none;
+            display: none;
+            font-size: 0.85rem;
+            z-index: 100;
+            white-space: nowrap;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        #tooltip b { color: #f1c40f; }
+
+        /* Floating Timer */
+        .plant-timer {
+            position: absolute;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            pointer-events: none;
+            white-space: nowrap;
+            transform: translate(-50%, -100%); 
+        }
+
+        .r-common { border-bottom: 3px solid #95a5a6; }
+        .r-uncommon { border-bottom: 3px solid #2ecc71; }
+        .r-rare { border-bottom: 3px solid #3498db; }
+        .r-epic { border-bottom: 3px solid #9b59b6; }
+        .r-legendary { border-bottom: 3px solid #f1c40f; background: #fffbe6; }
+
+        #loading { position: fixed; top:0; left:0; width:100%; height:100%; background:#87CEEB; display:flex; justify-content:center; align-items:center; z-index:10000; font-weight:bold; font-size:1.2rem; color:white; }
+        
+        .notif {
+            position: absolute; top: 80px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.7); color: white; padding: 6px 12px; border-radius: 15px;
+            font-weight: bold; font-size: 0.9rem; pointer-events: none; margin-bottom: 5px; white-space: nowrap;
+            animation: fadeOut 3s forwards;
+        }
+        
+        @keyframes floatUpFade { 
+            0% { opacity: 1; transform: translateY(0) scale(1); } 
+            100% { opacity: 0; transform: translateY(-50px) scale(1.2); } 
+        }
+        
+        .weight-text {
+            position: absolute,
+            font-weight: 800;
+            font-size: 1.5rem;
+            pointer-events: none;
+            color: #fff;
+            text-shadow: 2px 2px 0 #000;
+            animation: floatUpFade 1.5s forwards;
+            z-index: 50;
+        }
+
+        /* Mutation Text Effect */
+        .mutation-text {
+            position: absolute;
+            font-weight: 900;
+            font-size: 1.2rem;
+            pointer-events: none;
+            text-shadow: 0 0 5px black;
+            animation: floatUpFade 2s forwards;
+            white-space: nowrap;
+            z-index: 60;
+        }
+
+        @keyframes fadeOut { 0% {opacity:0; transform:translate(-50%, -10px);} 10% {opacity:1; transform:translate(-50%, 0);} 90% {opacity:1;} 100% {opacity:0;} }
+
+        @media (max-width: 768px) {
+            .actions-container { position: absolute; top: 10px; right: 10px; gap: 5px; }
+            .btn-action { padding: 8px 12px; min-width: 40px; justify-content: center; font-size: 1.2rem; }
+            .btn-action span { display: none; }
+            .btn-land span { display: block; font-size: 0.7rem; }
+            .stats-box { position: absolute; top: 10px; left: 10px; }
+            .inventory-slot { width: 50px; height: 50px; font-size: 1.4rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading">🌱 กำลังโหลด...</div>
+
+    <div id="tooltip"></div>
+    <div id="notif-area" style="position:absolute; top:70px; width:100%; display:flex; flex-direction:column; align-items:center; pointer-events:none;"></div>
+
+    <div id="ui-layer">
+        <div class="top-section">
+            <div class="stats-box">
+                <div class="money-text">💰 <span id="money">100</span></div>
+                <div class="sub-text">แปลง: <span id="plot-count">16</span> | รีร้าน: <span id="shop-timer">60s</span></div>
+            </div>
+
+            <div class="actions-container">
+                <button class="btn-action btn-land" onclick="expandLand()">🚜 <span>ขยาย <br><small id="land-price">($500)</small></span></button>
+                <button class="btn-action btn-sell" onclick="sellAll()">💵 <span>ขายทั้งหมด</span></button>
+                <button class="btn-action btn-shop" onclick="toggleShop()">🏪 <span>เปิดร้านค้า</span></button>
+            </div>
+        </div>
+
+        <div class="bottom-dock">
+            <div class="inv-header">
+                <span>🎒 กระเป๋าเมล็ด:</span>
+            </div>
+            <div class="inventory-wrapper">
+                <div class="inv-arrow" onclick="scrollInv(-1)">◀</div>
+                <div id="inventory-bar"></div>
+                <div class="inv-arrow" onclick="scrollInv(1)">▶</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="shop-drawer">
+        <div class="shop-header">
+            <h3 style="margin:0;">🏪 ร้านค้าเมล็ด</h3>
+            <span class="shop-close" onclick="toggleShop()">✕</span>
+        </div>
+        <div class="shop-list" id="shop-list"></div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+          apiKey: "AIzaSyCK7SP-obocWTYxd4Kr_QTIWVc4waiS0WM",
+          authDomain: "casino-game-7554d.firebaseapp.com",
+          databaseURL: "https://casino-game-7554d-default-rtdb.asia-southeast1.firebasedatabase.app",
+          projectId: "casino-game-7554d",
+          storageBucket: "casino-game-7554d.firebasestorage.app",
+          messagingSenderId: "4788052700",
+          appId: "1:4788052700:web:cca66da20703fc4a39ca19"
+        };
+
+        if (typeof THREE === 'undefined') alert('กรุณาตรวจสอบอินเทอร์เน็ต');
+        else initGame();
+
+        function initGame() {
+            try { firebase.initializeApp(firebaseConfig); } catch(e){}
+            const db = firebase.database();
+
+            let userId = localStorage.getItem('garden_user_id') || 'p_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('garden_user_id', userId);
+            let money = 100;
+            let selectedSeedId = null;
+            let gridSize = 4; 
+            let landCost = 500;
+            let shopTimeLeft = 60;
+            let invScrollIndex = 0;
+
+            const allSeeds = [
+                { id: 's1', name: "หญ้าหวาน", basePrice: 10, color: 0x2ecc71, height: 1.0, rarity: 'common', icon: '🌱' },
+                { id: 's2', name: "ทานตะวัน", basePrice: 30, color: 0xf1c40f, height: 2.0, rarity: 'uncommon', icon: '🌻' },
+                { id: 's3', name: "กุหลาบแดง", basePrice: 80, color: 0xe74c3c, height: 1.5, rarity: 'rare', icon: '🌹' },
+                { id: 's4', name: "กล้วยไม้", basePrice: 200, color: 0x9b59b6, height: 2.2, rarity: 'epic', icon: '🌺' },
+                { id: 's5', name: "ต้นทองคำ", basePrice: 600, color: 0xffd700, height: 3.0, rarity: 'legendary', icon: '💰' }
+            ];
+
+            let inventory = {}; 
+            allSeeds.forEach(s => inventory[s.id] = 0);
+            let shopStock = [];
+
+            const playerRef = db.ref('players/' + userId);
+            playerRef.on('value', (snap) => {
+                const data = snap.val();
+                if(data) {
+                    if(data.money > money) money = data.money;
+                    if(data.inventory) inventory = data.inventory;
+                    updateUI();
+                    renderInventory();
+                }
+            });
+            
+            function saveData() {
+                db.ref('players/' + userId).update({ 
+                    money: money, 
+                    lastSeen: Date.now(),
+                    inventory: inventory,
+                    gridSize: gridSize,
+                    landCost: landCost
+                });
+            }
+
+            // --- 3D Graphics ---
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB);
+            scene.fog = new THREE.Fog(0x87CEEB, 15, 60);
+
+            const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(8, 12, 12);
+            camera.lookAt(0, 0, 0);
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = false;
+            document.body.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            dirLight.position.set(10, 20, 10);
+            scene.add(dirLight);
+
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.maxPolarAngle = Math.PI / 2.2;
+            controls.enableZoom = true;
+            controls.zoomSpeed = 1.2;
+
+            const plots = [];
+            const plotMeshes = [];
+            const plantMeshes = [];
+            const plotSize = 1.5;
+            const gap = 0.2;
+
+            const groundGeo = new THREE.CylinderGeometry(40, 40, 1, 32);
+            const groundMat = new THREE.MeshLambertMaterial({ color: 0x5da130 });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.position.y = -1;
+            scene.add(ground);
+
+            function addPlots(newSize) {
+                plotMeshes.forEach(m => scene.remove(m));
+                plantMeshes.forEach(m => scene.remove(m));
+                plotMeshes.length = 0; 
+                plantMeshes.length = 0;
+                plots.length = 0;
+
+                const offset = ((newSize * (plotSize + gap)) / 2) - (plotSize + gap) / 2;
+
+                for(let x = 0; x < newSize; x++) {
+                    for(let z = 0; z < newSize; z++) {
+                        const index = x * newSize + z;
+                        const plotData = { status: 'empty', plantMesh: null, seedData: null, weight: 1, startTime: 0, duration: 0, multiplier: 1, mutationType: null, headMesh: null };
+                        
+                        const mesh = new THREE.Mesh(new THREE.BoxGeometry(plotSize, 0.3, plotSize), new THREE.MeshLambertMaterial({color: 0x8B4513}));
+                        mesh.position.set((x * (plotSize + gap)) - offset, -0.15, (z * (plotSize + gap)) - offset);
+                        mesh.userData = { index: index, isPlot: true };
+                        scene.add(mesh);
+                        
+                        plotMeshes.push(mesh);
+                        plots.push(plotData);
+                    }
+                }
+                updateUI();
+            }
+            addPlots(4);
+
+            // --- Shop Logic ---
+            function refreshShop() {
+                shopStock = allSeeds.map(seed => {
+                    const r = Math.random();
+                    let stock = 0;
+                    if(r > 0.5) stock = 1;
+                    if(r > 0.8) stock = 2;
+                    return { ...seed, stock: stock };
+                });
+                renderShop();
+                showNotification("🛒 ร้านค้ารีเฟรช!");
+            }
+
+            function renderShop() {
+                const list = document.getElementById('shop-list');
+                list.innerHTML = '';
+                shopStock.forEach(seed => {
+                    const card = document.createElement('div');
+                    const isOutOfStock = seed.stock <= 0;
+                    card.className = `seed-card r-${seed.rarity} ${isOutOfStock ? 'out-of-stock' : ''}`;
+                    
+                    card.innerHTML = `
+                        ${seed.stock > 0 ? `<div class="stock-badge">x${seed.stock}</div>` : ''}
+                        <div style="font-size:2rem">${seed.icon}</div>
+                        <div style="font-weight:bold">${seed.name}</div>
+                        <div style="color:#27ae60">$${seed.basePrice}</div>
+                    `;
+                    
+                    if(!isOutOfStock) {
+                        card.onclick = (e) => {
+                            e.stopPropagation();
+                            if(money >= seed.basePrice) {
+                                money -= seed.basePrice;
+                                inventory[seed.id]++;
+                                seed.stock--;
+                                saveData();
+                                renderShop();
+                                renderInventory();
+                                updateUI();
+                                showNotification(`✅ ซื้อ ${seed.name}`);
+                            } else {
+                                showNotification("💸 เงินไม่พอ");
+                            }
+                        };
+                    }
+                    list.appendChild(card);
+                });
+            }
+
+            window.scrollInv = function(dir) {
+                invScrollIndex += dir;
+                if(invScrollIndex < 0) invScrollIndex = 0;
+                renderInventory();
+            };
+
+            function renderInventory() {
+                const bar = document.getElementById('inventory-bar');
+                bar.innerHTML = '';
+                
+                let items = [];
+                allSeeds.forEach(seed => {
+                    const count = inventory[seed.id] || 0;
+                    if(count > 0) items.push(seed);
+                });
+
+                if(items.length === 0) {
+                    bar.innerHTML = '<div style="color:white; font-size:0.8rem; width:100%; text-align:center;">ว่างเปล่า</div>';
+                    return;
+                }
+
+                const visibleSlots = Math.floor(window.innerWidth / 60); 
+                const maxIndex = Math.max(0, items.length - visibleSlots);
+                
+                if(invScrollIndex > maxIndex) invScrollIndex = maxIndex;
+                if(invScrollIndex < 0) invScrollIndex = 0;
+
+                const visibleItems = items.slice(invScrollIndex, invScrollIndex + visibleSlots + 1);
+
+                visibleItems.forEach(seed => {
+                    const slot = document.createElement('div');
+                    slot.className = `inventory-slot ${selectedSeedId === seed.id ? 'selected' : ''}`;
+                    slot.innerHTML = `
+                        ${seed.icon}
+                        <div class="slot-count">${inventory[seed.id]}</div>
+                    `;
+                    slot.onclick = () => {
+                        selectedSeedId = seed.id;
+                        renderInventory();
+                        showNotification(`🌱 เลือก: ${seed.name}`);
+                    };
+                    bar.appendChild(slot);
+                });
+            }
+
+            window.toggleShop = function() {
+                document.getElementById('shop-drawer').classList.toggle('open');
+            };
+
+            setInterval(() => {
+                shopTimeLeft--;
+                if(shopTimeLeft <= 0) {
+                    shopTimeLeft = 60;
+                    refreshShop();
+                }
+                document.getElementById('shop-timer').innerText = `${shopTimeLeft}s`;
+            }, 1000);
+
+            // --- Interactions ---
+            const raycaster = new THREE.Raycaster();
+            const mouse = new THREE.Vector2();
+            const tooltip = document.getElementById('tooltip');
+
+            const getPointerPos = (event) => {
+                let x, y;
+                if(event.changedTouches) {
+                    x = event.changedTouches[0].clientX;
+                    y = event.changedTouches[0].clientY;
+                } else {
+                    x = event.clientX;
+                    y = event.clientY;
+                }
+                return { x, y };
+            };
+
+            const handlePointerMove = (event) => {
+                const { x, y } = getPointerPos(event);
+                mouse.x = (x / window.innerWidth) * 2 - 1;
+                mouse.y = -(y / window.innerHeight) * 2 + 1;
+
+                raycaster.setFromCamera(mouse, camera);
+                const allMeshes = [...plotMeshes, ...plantMeshes]; 
+                raycaster.params.Line.threshold = 0.1;
+                const intersects = raycaster.intersectObjects(allMeshes, false);
+
+                if (intersects.length > 0) {
+                    const object = intersects[0].object;
+                    let plotIndex = null;
+
+                    if(object.userData.isPlot) {
+                        plotIndex = object.userData.index;
+                    } else if(object.parent && object.parent.userData && object.parent.userData.plotIndex !== undefined) {
+                        plotIndex = object.parent.userData.plotIndex;
+                    }
+
+                    if (plotIndex !== null && plots[plotIndex]) {
+                        const plot = plots[plotIndex];
+                        if (plot.status === 'growing' || plot.status === 'ready') {
+                            const elapsed = Date.now() - plot.startTime;
+                            const percent = Math.min(100, Math.floor((elapsed / plot.duration) * 100));
+                            
+                            const sellPrice = Math.floor(plot.seedData.basePrice * plot.weight * plot.multiplier);
+                            
+                            tooltip.style.display = 'block';
+                            tooltip.style.left = (x + 15) + 'px';
+                            tooltip.style.top = (y + 15) + 'px';
+                            
+                            let statusText = plot.status === 'ready' ? '<span style="color:#2ecc71">✨ สุก!</span>' : '🌱 โต';
+                            let mutText = plot.mutationType ? `<div style="color:${plot.mutationType === 'golden' ? '#ffd700' : '#e74c3c'}">✨ ${plot.mutationType === 'golden' ? 'ทอง x2' : 'รุ้ง x4'}</div>` : '';
+                            
+                            tooltip.innerHTML = `
+                                <div><b>${plot.seedData.name}</b></div>
+                                <div>สถานะ: ${statusText} (${percent}%)</div>
+                                <div>น้ำหนัก: <b>${plot.weight.toFixed(2)} kg</b></div>
+                                <div>ขาย: <b style="color:#f1c40f">$${sellPrice}</b></div>
+                                ${mutText}
+                            `;
+                            return;
+                        }
+                    }
+                }
+                tooltip.style.display = 'none';
+            };
+
+            window.addEventListener('mousemove', handlePointerMove);
+            window.addEventListener('touchmove', handlePointerMove, {passive: false});
+
+            const handlePointerDown = (event) => {
+                if (event.target.closest('.actions-container') || event.target.closest('.bottom-dock') || event.target.closest('#shop-drawer')) return;
+
+                const { x, y } = getPointerPos(event);
+                mouse.x = (x / window.innerWidth) * 2 - 1;
+                mouse.y = -(y / window.innerHeight) * 2 + 1;
+
+                raycaster.setFromCamera(mouse, camera);
+                raycaster.params.Line.threshold = 0.1;
+                const intersects = raycaster.intersectObjects(plotMeshes, false);
+
+                if (intersects.length > 0) {
+                    const idx = intersects[0].object.userData.index;
+                    interactPlot(idx, { clientX: x, clientY: y });
+                }
+            };
+
+            window.addEventListener('mousedown', handlePointerDown);
+            window.addEventListener('touchstart', handlePointerDown, {passive: false});
+
+            function interactPlot(index, event) {
+                const plot = plots[index];
+                if (plot.status === 'empty') {
+                    if(!selectedSeedId) { 
+                        showNotification("❌ เลือกเมล็ดในกระเป๋าก่อน!"); 
+                        return; 
+                    }
+                    const seed = allSeeds.find(s => s.id === selectedSeedId);
+                    if(inventory[selectedSeedId] > 0) {
+                        inventory[selectedSeedId]--;
+                        
+                        const randomWeight = 1.0 + (Math.random() * 2.0);
+                        
+                        plot.status = 'growing';
+                        plot.seedData = seed;
+                        plot.weight = randomWeight; 
+                        plot.startTime = Date.now();
+                        plot.duration = 10000; 
+                        plot.multiplier = 1;
+                        plot.mutationType = null;
+                        
+                        createPlantMesh(index, seed, randomWeight);
+                        
+                        saveData();
+                        renderInventory();
+                        updateUI();
+                        
+                        showWeightText(event.clientX, event.clientY, randomWeight);
+                    } else {
+                        showNotification("❌ เมล็ดหมด!");
+                        selectedSeedId = null;
+                        renderInventory();
+                    }
+                } else if (plot.status === 'ready') {
+                    harvest(index, event);
+                }
+            }
+
+            function showWeightText(x, y, weight) {
+                const div = document.createElement('div');
+                div.className = 'weight-text';
+                div.style.left = x + 'px';
+                div.style.top = y + 'px';
+                div.innerText = `${weight.toFixed(2)} kg`;
+                div.style.color = weight > 2.0 ? '#f1c40f' : '#fff'; 
+                document.body.appendChild(div);
+                setTimeout(() => div.remove(), 1500);
+            }
+
+            function createPlantMesh(index, seed, weight) {
+                const plot = plots[index];
+                const group = new THREE.Group();
+                group.userData = { plotIndex: index };
+
+                const sizeScale = 0.8 * weight; 
+                
+                const stem = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.1, 0.15, seed.height * sizeScale), 
+                    new THREE.MeshLambertMaterial({color:0x5d4037})
+                );
+                stem.position.y = (seed.height * sizeScale)/2;
+                group.add(stem);
+
+                const leafGeo = new THREE.ConeGeometry(0.3, 0.6, 5);
+                const leafMat = new THREE.MeshLambertMaterial({color:0x2ecc71});
+                for(let i=0; i<5; i++) {
+                    const leaf = new THREE.Mesh(leafGeo, leafMat);
+                    leaf.rotation.x = Math.PI/3;
+                    leaf.rotation.y = (Math.PI * 2 / 5) * i;
+                    leaf.position.y = (seed.height * sizeScale) * 0.6;
+                    leaf.scale.set(sizeScale, sizeScale, sizeScale);
+                    group.add(leaf);
+                }
+
+                const head = new THREE.Mesh(
+                    new THREE.DodecahedronGeometry(0.3 * sizeScale), 
+                    new THREE.MeshLambertMaterial({color:seed.color})
+                );
+                head.position.y = seed.height * sizeScale;
+                group.add(head);
+                plot.headMesh = head; // Reference สำหรับ Mutation
+
+                group.position.copy(plotMeshes[index].position);
+                group.scale.set(0,0,0); 
+                scene.add(group);
+                plot.plantMesh = group;
+                plantMeshes.push(group);
+            }
+
+            function harvest(index, event) {
+                const plot = plots[index];
+                const val = Math.floor(plot.seedData.basePrice * plot.weight * plot.multiplier);
+                money += val;
+                saveData();
+                showFloatingText(event.clientX, event.clientY, `+$${val}`, '#f1c40f');
+                
+                const meshIdx = plantMeshes.indexOf(plot.plantMesh);
+                if(meshIdx > -1) plantMeshes.splice(meshIdx, 1);
+                
+                scene.remove(plot.plantMesh);
+                plot.status = 'empty';
+                plot.plantMesh = null;
+                updateUI();
+            }
+
+            function sellAll() {
+                let total = 0, count = 0;
+                for(let i = plots.length - 1; i >= 0; i--) {
+                    const p = plots[i];
+                    if(p.status === 'ready') {
+                        const val = Math.floor(p.seedData.basePrice * p.weight * p.multiplier);
+                        total += val;
+                        count++;
+                        
+                        const meshIdx = plantMeshes.indexOf(p.plantMesh);
+                        if(meshIdx > -1) plantMeshes.splice(meshIdx, 1);
+                        
+                        scene.remove(p.plantMesh);
+                        p.status = 'empty';
+                        p.plantMesh = null;
+                    }
+                }
+                if(count > 0) {
+                    saveData();
+                    showNotification(`💰 ขาย ${count} ต้น ได้ $${total}`);
+                    updateUI();
+                } else { showNotification("ไม่มีต้นไม้สุก"); }
+            }
+
+            function expandLand() {
+                if(money >= landCost) {
+                    money -= landCost;
+                    saveData();
+                    gridSize++;
+                    landCost = Math.floor(landCost * 1.5);
+                    addPlots(gridSize); 
+                    showNotification(`🚜 ขยายเป็น ${gridSize}x${gridSize}!`);
+                    updateUI();
+                } else { showNotification("💸 เงินไม่พอ"); }
+            }
+
+            // --- 🆕 Mutation System (Golden & Ruby) ---
+            function checkMutation() {
+                plots.forEach(p => {
+                    if(p.status === 'growing' && !p.mutationType) {
+                        const elapsed = Date.now() - p.startTime;
+                        // เช็ค Mutation เมื่อโตไปถึง 50%
+                        if(elapsed > p.duration * 0.5 && elapsed < p.duration * 0.6) {
+                            if(Math.random() < 0.15) { // โอกาส 15% (ทอง 10% + รุ้ง 5%)
+                                const r = Math.random();
+                                
+                                if (r < 0.66) {
+                                    // --- Golden Mutation (66% of 15% = ~10%) ---
+                                    p.mutationType = 'golden';
+                                    p.multiplier = 2; // x2
+                                    
+                                    // เปลี่ยนสีทั้งต้นเป็นทอง
+                                    p.plantMesh.traverse((child) => {
+                                        if(child.isMesh) {
+                                            child.material = new THREE.MeshStandardMaterial({ 
+                                                color: 0xffd700, 
+                                                emissive: 0xaa6600,
+                                                emissiveIntensity: 0.5,
+                                                roughness: 0.3,
+                                                metalness: 1.0 // สะท้อนแสงเหมือนโลหะ
+                                            });
+                                        }
+                                    });
+                                    
+                                    showMutationEffect(p, "✨ Mutation: ทอง x2!");
+
+                                } else {
+                                    // --- Ruby Mutation (34% of 15% = ~5%) ---
+                                    p.mutationType = 'ruby';
+                                    p.multiplier = 4; // x4
+                                    
+                                    // เปลี่ยนสีทั้งต้นเป็นสีรุ้ง/ทับทิมย์
+                                    p.plantMesh.traverse((child) => {
+                                        if(child.isMesh) {
+                                            child.material = new THREE.MeshStandardMaterial({ 
+                                                color: 0xe74c3c, 
+                                                emissive: 0x550000,
+                                                emissiveIntensity: 0.8
+                                            });
+                                        }
+                                    });
+
+                                    showMutationEffect(p, "✨ Mutation: รุ้ง x4!");
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            function showMutationEffect(plot, text) {
+                // แสดงข้อความตรงต้นไม้
+                if(plot.plantMesh) {
+                    // แปลงตำแหน่ง 3D เป็น 2D แม่นยำ
+                    const pos = plot.plantMesh.position.clone();
+                    pos.project(camera);
+                    
+                    const x = (pos.x * .5 + .5) * window.innerWidth;
+                    const y = (-(pos.y * .5) + .5) * window.innerHeight;
+
+                    const div = document.createElement('div');
+                    div.className = 'mutation-text';
+                    div.innerText = text;
+                    div.style.left = x + 'px';
+                    div.style.top = (y - 30) + 'px';
+                    div.style.color = plot.mutationType === 'golden' ? '#ffd700' : '#ff4757';
+                    document.body.appendChild(div);
+                    setTimeout(() => div.remove(), 2000);
+                }
+            }
+
+            // --- 🆕 Timers on Plants (Fixed Position) ---
+            const timerElements = [];
+
+            function updateTimers() {
+                // ลบ Element เก่า (วิธี brute force แต่รวดเพราะ DOM น้อย)
+                timerElements.forEach(el => el.remove());
+                timerElements.length = 0;
+
+                const now = Date.now();
+                const vector = new THREE.Vector3();
+
+                plots.forEach((p, i) => {
+                    if(p.status === 'growing' && p.plantMesh) {
+                        const elapsed = now - p.startTime;
+                        const remaining = Math.max(0, Math.ceil((p.duration - elapsed) / 1000));
+                        
+                        // คำนวณตำแหน่งหน้าจอแบบแม่นยำ
+                        // ใช้จุดกึ่งกลางของ Bounding Box ของต้นไม้
+                        const box = new THREE.Box3().setFromObject(p.plantMesh);
+                        const center = box.getCenter(vector);
+                        center.y = box.max.y; // ชี้ไปที่ด้านบนสุดของต้นไม้
+
+                        center.project(camera);
+
+                        const x = (center.x * .5 + .5) * window.innerWidth;
+                        const y = (-(center.y * .5) + .5) * window.innerHeight;
+
+                        const div = document.createElement('div');
+                        div.className = 'plant-timer';
+                        div.innerText = remaining + 's';
+                        div.style.left = x + 'px';
+                        div.style.top = (y + 10) + 'px'; // เว้นระยะห่างนิดหน่อย
+                        document.body.appendChild(div);
+                        timerElements.push(div);
+                    }
+                });
+            }
+
+            function updateUI() {
+                document.getElementById('money').innerText = money;
+                document.getElementById('plot-count').innerText = gridSize * gridSize;
+                document.getElementById('land-price').innerText = `($${landCost})`;
+            }
+
+            function showNotification(msg) {
+                const area = document.getElementById('notif-area');
+                const el = document.createElement('div');
+                el.className = 'notif';
+                el.innerText = msg;
+                area.appendChild(el);
+                setTimeout(() => el.remove(), 3000);
+            }
+
+            function showFloatingText(x,y,text,color) {
+                const div = document.createElement('div');
+                div.style.cssText = `position:absolute; left:${x}px; top:${y}px; color:${color}; font-weight:bold; font-size:1.2rem; pointer-events:none; text-shadow:1px 1px 0 #000; animation: floatUpFade 1s forwards;`;
+                div.innerText = text;
+                document.body.appendChild(div);
+                setTimeout(() => div.remove(), 1000);
+            }
+            
+            const style = document.createElement('style');
+            style.innerHTML = `@keyframes fadeUp { 0% {opacity:1;} 100% {opacity:0; transform:translateY(-30px);} }`;
+            document.head.appendChild(style);
+
+            function animate() {
+                requestAnimationFrame(animate);
+                checkMutation();
+                
+                const now = Date.now();
+                plots.forEach(p => {
+                    if(p.status === 'growing' && p.plantMesh) {
+                        const prog = (now - p.startTime) / p.duration;
+                        if(prog >= 1) {
+                            p.status = 'ready';
+                            p.plantMesh.position.y += 0.2;
+                        } else {
+                            const s = prog;
+                            p.plantMesh.scale.set(s,s,s);
+                            p.plantMesh.rotation.z = Math.sin(now/500) * 0.05;
+                        }
+                    } else if (p.status === 'ready' && p.plantMesh) {
+                        p.plantMesh.rotation.y += 0.02;
+                    }
+                });
+
+                updateTimers(); // Update จำนวนเวลาบนต้นไม้
+
+                controls.update();
+                renderer.render(scene, camera);
+            }
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth/window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderInventory();
+            });
+
+            refreshShop();
+            renderInventory();
+            updateUI();
+            animate();
+            
+            setTimeout(() => {
+                const l = document.getElementById('loading');
+                if(l) { l.style.opacity = 0; setTimeout(()=>l.remove(), 500); }
+            }, 800);
+        }
+    </script>
+</body>
+</html>
